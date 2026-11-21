@@ -1,0 +1,16 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const {execFileSync}=require('node:child_process');
+const root=path.resolve(__dirname,'..');
+const manifest=JSON.parse(fs.readFileSync(path.join(root,'deployment-manifest.json'),'utf8'));
+if(Number(process.versions.node.split('.')[0])<22)throw Error('Se necesita Node.js 22 o posterior.');
+for(const [name,expected] of Object.entries(manifest.files)){
+  const bytes=fs.readFileSync(path.join(root,name));
+  if(bytes.length!==expected.bytes||crypto.createHash('sha256').update(bytes).digest('hex')!==expected.sha256)
+    throw Error('Archivo incompleto o diferente: '+name);
+}
+for(const name of ['index-wispbyte.js','app-0.6.6-ui.cjs'])execFileSync(process.execPath,['--check',path.join(root,name)]);
+if(process.platform==='linux'){
+  for(const name of ['rakmagic-worker-0.6.6-ui','rakmagic-wireguard-0.6.5'])fs.chmodSync(path.join(root,name),0o700);
+}
+console.log('RakMagic 0.6.6: archivos completos; diagnostico pasivo. No se conectaron cuentas.');

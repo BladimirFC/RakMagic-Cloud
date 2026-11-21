@@ -1,0 +1,3 @@
+* text=auto eol=lf
+rakmagic-worker-0.6.6-ui -text
+rakmagic-wireguard-0.6.5 -text

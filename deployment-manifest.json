@@ -1,0 +1,18 @@
+{
+  "version": "0.6.6",
+  "mode": "read-only",
+  "entrypoint": "index-wispbyte.js",
+  "dataDirectory": "..",
+  "automaticAccountStart": false,
+  "experimentalLauncherAuthentication": false,
+  "files": {
+    "rakmagic-worker-0.6.6-ui": {
+      "bytes": 1576792,
+      "sha256": "a9bd28328eb8ec62e83e3a14c90457d2945bf12b7a67812583f1d4f3b18934da"
+    },
+    "rakmagic-wireguard-0.6.5": {
+      "bytes": 7045244,
+      "sha256": "4d94b82bdcc314120c529978f1eeee6d2d2386bff32aedd456216f2ebdc1750b"
+    }
+  }
+}
