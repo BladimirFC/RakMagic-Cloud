@@ -314,8 +314,8 @@ async function createCloudClient(directory,profile,{vehicleGate=null,afkOnly=fal
   try{
     await new Promise((resolve,reject)=>{
       const ready=event=>{if(event.type==='workerReady'){
-        if(nativeUiDiagnostics&&(event.version!=='native-ui-0.6.6'||event.nativeUiObserver!==true||event.readOnlyUi!==true)){
-          const error=Error('El ejecutable no admite este diagnostico. Extrae tambien rakmagic-worker-0.6.6-ui del ZIP.');error.code='NATIVE_UI_UNSUPPORTED';finish(error);
+        if(nativeUiDiagnostics&&(event.version!=='native-ui-0.6.7'||event.packetInventory!==true||event.nativeUiObserver!==true||event.readOnlyUi!==true)){
+          const error=Error('El ejecutable no admite este diagnostico. Extrae tambien bin/rakmagic-worker-0.6.7-ui del despliegue.');error.code='NATIVE_UI_UNSUPPORTED';finish(error);
         }else finish();
       }};
       const closed=()=>finish(Error('WORKER_CLOSED'));
@@ -333,7 +333,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
   const vehicleGate=vehicleDiagnostics?new VehicleGate():null;
   let key;
   try{key=identity(directory);}catch(_){console.error('No se pudo cargar la identidad privada del hosting. Conserva state/host-key.pem.');process.exitCode=1;return;}
-  console.log('RAKMAGIC CLOUD 0.6.6 - FALCONIX - DIAGNOSTICO INTERFAZ NATIVA - PASO 1');
+  console.log('RAKMAGIC CLOUD 0.6.7 - FALCONIX - DIAGNOSTICO INTERFAZ NATIVA - PASO 1');
   if(diagnosticOnly)console.log('Solo lectura: arranque de cuentas, login automatico, reconexion y AFK desactivados.');
   console.log('Clave publica: descarga host-key.json desde Archivos. Huella SHA-256: '+key.fingerprint);
   try{prepareWorker(__dirname);}catch(error){console.error(error.message);process.exitCode=1;return;}
@@ -428,7 +428,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
     }catch(_){return {code:422,body:{message:'No se pudo preparar el perfil. Comprueba el login guardado y vuelve a vincular si cambio la clave del hosting.'}};}
     finally{try{fs.unlinkSync(temporary);}catch(_){}}
   });
-  const help=()=>{console.log('Comandos: interfaz estado | interfaz diagnostico [Nombre_Apellido] | vincular | vpn estado | estado | cuentas | cuenta Nombre_Apellido | conectar [Nombre_Apellido] | desconectar [Nombre_Apellido|todas] | recargar | dialogo | conexion diagnostico [Nombre_Apellido] | salir');};
+  const help=()=>{console.log('Comandos: interfaz estado | interfaz diagnostico [Nombre_Apellido] | interfaz canales [Nombre_Apellido] | vincular | vpn estado | estado | cuentas | cuenta Nombre_Apellido | conectar [Nombre_Apellido] | desconectar [Nombre_Apellido|todas] | recargar | dialogo | conexion diagnostico [Nombre_Apellido] | salir');};
   const input=readline.createInterface({input:process.stdin,terminal:false});
   input.on('line',line=>{
     if(line.length>256)return;
@@ -439,7 +439,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
       if(command==='salir'){await shutdown();return;}
       if(command==='ayuda'){help();return;}
       if(command==='interfaz estado'){
-        console.log(JSON.stringify({version:'0.6.6',paso:1,lecturaInterfaz:nativeUiDiagnostics,modo:diagnosticOnly?'solo-lectura':'normal',arranqueAutomatico:!diagnosticOnly,loginAutomatico:!diagnosticOnly,afkAutomatico:!diagnosticOnly,cuentasActivas:manager?.clients.size??0,valoresEntradaRegistrados:false,accionesInterfazImplementadas:false},null,2));return;
+        console.log(JSON.stringify({version:'0.6.7',paso:1,lecturaInterfaz:nativeUiDiagnostics,inventarioPaquetes:true,modo:diagnosticOnly?'solo-lectura':'normal',arranqueAutomatico:!diagnosticOnly,loginAutomatico:!diagnosticOnly,afkAutomatico:!diagnosticOnly,cuentasActivas:manager?.clients.size??0,valoresEntradaRegistrados:false,accionesInterfazImplementadas:false},null,2));return;
       }
       if(command==='vpn estado'){console.log(JSON.stringify(vpn.info(),null,2));return;}
       if(command==='vincular'){
@@ -454,6 +454,13 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
       else if(command==='interfaz diagnostico'||/^interfaz diagnostico [A-Za-z0-9_\[\]().$=@]{3,24}$/.test(command)){
         const nickname=parts[2]||manager.selected,info=manager.connectionInfo(nickname);
         console.log(JSON.stringify({cuenta:nickname,disponible:!!info.interfazNativa,...(info.interfazNativa||{aviso:'Esa cuenta no tiene un lector activo. Este comando no inicia conexiones.'})},null,2));
+      }
+      else if(command==='interfaz canales'||/^interfaz canales [A-Za-z0-9_\[\]().$=@]{3,24}$/.test(command)){
+        const nickname=parts[2]||manager.selected,info=manager.connectionInfo(nickname),data=info.datos,ui=info.interfazNativa;
+        console.log(JSON.stringify({version:'0.6.7',cuenta:nickname,disponible:data?.packetInventoryAvailable===true,
+          estado:info.estadoActual,paquetes:data?.packetTypes??[],rpcsSinManejar:data?.unhandledRpcs??[],
+          interfazF4:ui?{operaciones:ui.operacionesRecibidas,controles:ui.totalControles,lecturaCompleta:ui.lecturaCompleta}:null,
+          accionesEnviadas:0,aviso:'Metadatos de recepcion; no incluyen cuerpos de paquetes ni confirman acceso a la cuenta.'},null,2));
       }
       else if(parts[0].toLowerCase()==='cuenta'&&parts.length===2){manager.select(parts[1]);console.log('Cuenta seleccionada: '+manager.selected);}
       else if(command==='dialogo')console.log(JSON.stringify(client?.dialogInfo()||{aviso:'No hay un dialogo disponible para consultar.'},null,2));

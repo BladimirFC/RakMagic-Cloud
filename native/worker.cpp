@@ -86,7 +86,7 @@ int main(){
     std::cout.setf(std::ios::unitbuf);
     std::string input;auto lastStatus=std::chrono::steady_clock::now();
     autoSpawnEnabled=false;
-    std::cout<<"{\"type\":\"workerReady\",\"version\":\"native-ui-0.6.6\",\"connectionDiagnostics\":true,\"afkOnly\":true,\"serverMenus\":false,\"accountMap\":true,\"launcherCompatibility\":false,\"nativeUiObserver\":true,\"readOnlyUi\":true}\n";
+    std::cout<<"{\"type\":\"workerReady\",\"version\":\"native-ui-0.6.7\",\"connectionDiagnostics\":true,\"afkOnly\":true,\"serverMenus\":false,\"accountMap\":true,\"launcherCompatibility\":false,\"packetInventory\":true,\"nativeUiObserver\":true,\"readOnlyUi\":true}\n";
     while(!stopping){
         pollfd fd{STDIN_FILENO,POLLIN,0};int count=poll(&fd,1,20);
         if(count>0&&(fd.revents&(POLLIN|POLLHUP))){

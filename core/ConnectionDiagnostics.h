@@ -13,8 +13,10 @@
 // identifiers are retained. The caller holds the native client's existing lock.
 class ConnectionDiagnostics {
     struct Rpc { uint64_t count=0; uint32_t bits=0; bool supported=false; };
+    struct PacketType { uint64_t count=0, timestamped=0; uint32_t minBytes=0, maxBytes=0, bits=0; };
     struct Check { uint8_t type=0; uint32_t address=0; uint16_t offset=0, count=0; bool valid=false; };
     std::array<Rpc,256> rpcs{};
+    std::array<PacketType,256> packetTypes{};
     std::deque<Check> checks;
     uint64_t packets=0, rpcCount=0, malformed=0, checkCount=0;
 public:
@@ -31,8 +33,16 @@ public:
         if(packet->bitSize>uint64_t(packet->length)*8) { ++malformed; return; }
         unsigned int offset=0;
         if(packet->data[0]==ID_TIMESTAMP)offset=1+sizeof(RakNetTime);
-        if(offset>=packet->length) { ++malformed; return; }
-        if(packet->data[offset]!=ID_RPC)return;
+        if(offset>=packet->length||(packet->bitSize&&packet->bitSize<uint64_t(offset+1)*8)) { ++malformed; return; }
+        const uint8_t packetId=packet->data[offset];
+        const uint32_t bytes=packet->length-offset;
+        auto& summary=packetTypes[packetId];
+        if(!summary.count||bytes<summary.minBytes)summary.minBytes=bytes;
+        if(bytes>summary.maxBytes)summary.maxBytes=bytes;
+        ++summary.count;
+        if(offset)++summary.timestamped;
+        summary.bits=packet->bitSize?packet->bitSize-offset*8:0;
+        if(packetId!=ID_RPC)return;
         RakNet::BitStream input(packet->data,packet->length,false);
         input.IgnoreBits((offset+1)*8);
         uint8_t id=0;
@@ -88,6 +98,14 @@ public:
         for(size_t id=0;id<rpcs.size();++id)if(rpcs[id].count&&!rpcs[id].supported) {
             if(comma)out << ','; comma=true;
             out << "{\"id\":" << id << ",\"count\":" << rpcs[id].count << ",\"lastBits\":" << rpcs[id].bits << '}';
+        }
+        out << "],\"packetInventoryAvailable\":true,\"packetTypes\":["; comma=false;
+        for(size_t id=0;id<packetTypes.size();++id)if(packetTypes[id].count) {
+            if(comma)out << ','; comma=true;
+            const auto& value=packetTypes[id];
+            out << "{\"id\":" << id << ",\"count\":" << value.count
+                << ",\"minBytes\":" << value.minBytes << ",\"maxBytes\":" << value.maxBytes
+                << ",\"lastBits\":" << value.bits << ",\"timestamped\":" << value.timestamped << '}';
         }
         out << "],\"privacy\":\"inbound-metadata-only; no credentials or packet bodies\"}";
         return out.str();

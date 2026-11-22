@@ -8,7 +8,7 @@ test('Wispbyte entrypoint keeps existing private state at the server root and st
   const runtime=fs.mkdtempSync(path.join(os.tmpdir(),'rakmagic-deploy-'));
   try{
     const code=runtime;
-    for(const name of ['index-wispbyte.js','app-0.6.6-ui.cjs','lib','bin'])
+    for(const name of ['index-wispbyte.js','app-0.6.7-ui.cjs','lib','bin'])
       fs.cpSync(path.join(root,name),path.join(code,name),{recursive:true});
     fs.writeFileSync(path.join(runtime,'.env'),'RAKMAGIC_WG_ENABLED=0\n');
     fs.mkdirSync(path.join(runtime,'state'));

@@ -14,3 +14,13 @@ target_compile_options(rakmagic-worker PRIVATE -Wno-deprecated-declarations -Wno
 target_link_libraries(rakmagic-worker PRIVATE pthread)
 target_link_options(rakmagic-worker PRIVATE -static-libstdc++ -static-libgcc)
 
+option(RAKMAGIC_BUILD_DIAGNOSTIC_TESTS "Build synthetic packet-inventory checks" OFF)
+if(RAKMAGIC_BUILD_DIAGNOSTIC_TESTS)
+  add_executable(packet-inventory-test tests/packet-inventory.cpp ${RAK_FILES} "${R}/SAMP/SAMPRPC.cpp" "${R}/SAMP/samp_auth.cpp" "${R}/SAMP/samp_netencr.cpp")
+  target_include_directories(packet-inventory-test PRIVATE "${CORE}" "${R}" "${R}/SAMP")
+  target_compile_definitions(packet-inventory-test PRIVATE RAKSAMP_CLIENT _RAKNET_THREADSAFE RAKMAGIC_CLOUD_WG)
+  target_compile_options(packet-inventory-test PRIVATE -Wno-deprecated-declarations -Wno-write-strings -fno-strict-aliasing -Wno-register)
+  target_link_libraries(packet-inventory-test PRIVATE pthread)
+  target_link_options(packet-inventory-test PRIVATE -static-libstdc++ -static-libgcc)
+endif()
+

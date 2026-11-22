@@ -1,9 +1,11 @@
 # RakMagic Cloud
 
-Versión 0.6.6: diagnóstico pasivo de la interfaz nativa del servidor.
+Versión 0.6.7: diagnóstico pasivo de la interfaz nativa del servidor.
 El arranque de cuentas, el login automático, la reconexión y AFK están
 desactivados. Las acciones de interfaz todavía no están implementadas.
 Una conexión de red o un spawn no confirman el acceso a una cuenta.
+El nuevo inventario registra solo IDs, cantidades y tamaños, incluyendo
+los paquetes fuera del canal F4. No guarda cuerpos de paquetes ni envía respuestas.
 
 ## Despliegue en Wispbyte
 
@@ -34,7 +36,7 @@ salida de cada ejecución aparecen en su pestaña GitHub.
   state/                       identidad, sesiones y preferencias existentes
   wireguard.conf               configuración VPN privada, si se usa
   index-diagnostico.js          inicio del programa
-  app-0.6.6-ui.cjs
+  app-0.6.7-ui.cjs
   lib/
   bin/                         ejecutables distribuidos por GitHub
   scripts/verify-deploy.cjs
@@ -54,6 +56,7 @@ raíz quedan sin utilizar después del reinicio.
 ```text
 interfaz estado
 interfaz diagnostico Nombre_Apellido
+interfaz canales Nombre_Apellido
 conexion diagnostico Nombre_Apellido
 vpn estado
 ```
@@ -72,8 +75,8 @@ npm test
 npm run verify
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel 2
-cp build/rakmagic-worker bin/rakmagic-worker-0.6.6-ui
-strip bin/rakmagic-worker-0.6.6-ui
+cp build/rakmagic-worker bin/rakmagic-worker-0.6.7-ui
+strip bin/rakmagic-worker-0.6.7-ui
 cd wireguard
 CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags='-s -w' -o ../bin/rakmagic-wireguard-0.6.5 .
 cd ..

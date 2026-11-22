@@ -1,7 +1,7 @@
 {
   "name": "rakmagic-cloud",
-  "version": "0.6.6",
-  "description": "Falconix: diagnostico pasivo de interfaz nativa y despliegue Wispbyte",
+  "version": "0.6.7",
+  "description": "Falconix: diagnostico pasivo de interfaz e inventario de paquetes",
   "private": true,
   "license": "GPL-2.0-or-later",
   "engines": {
