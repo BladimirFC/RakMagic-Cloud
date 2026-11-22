@@ -1,53 +1,53 @@
 # RakMagic Cloud
 
 Versión 0.6.6: diagnóstico pasivo de la interfaz nativa del servidor.
-Permite vincular RakMagic y consultar los mensajes de interfaz recibidos.
 El arranque de cuentas, el login automático, la reconexión y AFK están
 desactivados. Las acciones de interfaz todavía no están implementadas.
 Una conexión de red o un spawn no confirman el acceso a una cuenta.
 
 ## Despliegue en Wispbyte
 
-En **GitHub → Desplegar un repositorio**, selecciona:
-
 - Repositorio: `BladimirFC/RakMagic-Cloud`.
 - Rama: `main`.
-- Carpeta de destino: `/rakmagic-cloud`.
+- Carpeta en el servidor: `/` (raíz).
 - Actualizar con cada push y **conservar los archivos que no están en el repositorio**.
-- Instalación: no necesita descargar paquetes de npm.
-- Comprobación opcional: `cd /home/container/rakmagic-cloud && npm run verify`.
+- Paso de verificación: `cd /home/container && npm run verify`.
+- Archivo de arranque, **JS_FILE**: `index-diagnostico.js`.
 
-Cuando termine la primera descarga, cambia **Startup → JS_FILE** a
-`rakmagic-cloud/index-wispbyte.js`. Si Wispbyte solicita un comando de
-ejecución para el despliegue, usa
-`node /home/container/rakmagic-cloud/index-wispbyte.js`.
+La ruta antigua de verificación,
+`cd /home/container/rakmagic-cloud && npm run verify`, también funciona:
+el pequeño paquete de compatibilidad de esa carpeta ejecuta la comprobación
+del programa instalado en la raíz. El programa y sus datos están en la raíz.
+`index-wispbyte.js` queda como alias de arranque con ese mismo directorio.
 
 Los commits reinician un servidor gratuito si ya está encendido. Si está
 apagado, hay que iniciarlo desde el panel. Wispbyte permite seis despliegues
-por hora en el plan gratuito y admite `[skip deploy]` en el mensaje de commit.
-El historial y la salida de cada ejecución aparecen en la pestaña GitHub.
+por hora y admite `[skip deploy]` en el mensaje de commit. El historial y la
+salida de cada ejecución aparecen en su pestaña GitHub.
 
-## Datos que deben conservarse en el hosting
+## Configuración privada y ejecutables
 
 ```text
 /home/container/
   .env                         configuración privada existente
   cloud-profile.json           perfil cifrado existente
-  state/                       identidad privada, sesiones y preferencias
+  state/                       identidad, sesiones y preferencias existentes
   wireguard.conf               configuración VPN privada, si se usa
-  rakmagic-cloud/              código descargado de este repositorio
-    index-wispbyte.js
-    app-0.6.6-ui.cjs
-    rakmagic-worker-0.6.6-ui
-    rakmagic-wireguard-0.6.5
-    lib/
+  index-diagnostico.js          inicio del programa
+  app-0.6.6-ui.cjs
+  lib/
+  bin/                         ejecutables distribuidos por GitHub
+  scripts/verify-deploy.cjs
 ```
 
-`index-wispbyte.js` busca la configuración y los datos en la carpeta padre.
-Los ejecutables se leen de la carpeta del código. Así las actualizaciones
-mantienen la identidad del hosting y no requieren exportar otra vez el login.
-No publiques `.env`, `state`, perfiles, claves, enlaces privados ni capturas
-de paquetes. El repositorio incluye únicamente código y ejemplos vacíos.
+Conservar archivos existentes mantiene `.env`, `state` y el perfil cifrado.
+No publiques esos archivos, claves, enlaces privados ni capturas de paquetes.
+No es necesario volver a exportar el perfil ni activar la VPN al actualizar.
+
+Los programas nativos se ejecutan desde copias verificadas por SHA-256 en
+el directorio temporal del contenedor. GitHub puede actualizar los originales
+de `bin/` mientras una copia está funcionando. Los ejecutables antiguos de la
+raíz quedan sin utilizar después del reinicio.
 
 ## Uso
 
@@ -59,33 +59,29 @@ vpn estado
 ```
 
 Estas consultas no conectan cuentas. La conexión requiere una orden manual.
-WireGuard conserva la opción de la configuración privada del hosting; no se
-activa al desplegar esta versión. Este programa no reproduce verificaciones
-de autenticación del launcher oficial ni ejecuta sus DLL.
+Este programa no reproduce verificaciones de autenticación del launcher
+oficial ni ejecuta sus DLL.
 
 ## Desarrollo
 
 Node.js 22 o posterior, Linux x86-64 y glibc 2.36 o posterior.
-Los binarios ya están incluidos, por lo que Wispbyte no necesita compilarlos.
+Los binarios y las dependencias vendorizadas ya están incluidos.
 
 ```sh
 npm test
 npm run verify
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel 2
-cp build/rakmagic-worker rakmagic-worker-0.6.6-ui
-strip rakmagic-worker-0.6.6-ui
+cp build/rakmagic-worker bin/rakmagic-worker-0.6.6-ui
+strip bin/rakmagic-worker-0.6.6-ui
 cd wireguard
-CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags='-s -w' -o ../rakmagic-wireguard-0.6.5 .
+CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags='-s -w' -o ../bin/rakmagic-wireguard-0.6.5 .
 cd ..
 node scripts/update-manifest.cjs
 npm run verify
 ```
 
-El helper WireGuard conserva sus fuentes y dependencias vendorizadas.
-Los cambios de código nativo requieren actualizar el ejecutable correspondiente
-en el mismo commit. Para uso fuera de Wispbyte, `npm start` usa esta propia
-carpeta para sus datos, en lugar de la carpeta padre.
-
+Los cambios nativos requieren actualizar el binario y su manifiesto en el
+mismo commit. `npm start` usa esta misma carpeta para los datos del programa.
 Licencia: GPL-2.0-or-later. Consulta `COPYING`, los archivos `LICENSE-*` y
 `THIRD-PARTY-WIREGUARD.md` para las dependencias y sus atribuciones.

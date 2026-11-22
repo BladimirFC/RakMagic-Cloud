@@ -4,11 +4,11 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {spawnSync}=require('node:child_process');
 const {WireGuard}=require('../lib/wireguard.cjs');
 const root=path.resolve(__dirname,'..');
-test('Wispbyte entrypoint keeps private state outside the deployed code and starts no accounts',()=>{
+test('Wispbyte entrypoint keeps existing private state at the server root and starts no accounts',()=>{
   const runtime=fs.mkdtempSync(path.join(os.tmpdir(),'rakmagic-deploy-'));
   try{
-    const code=path.join(runtime,'rakmagic-cloud');fs.mkdirSync(code);
-    for(const name of ['index-wispbyte.js','app-0.6.6-ui.cjs','lib','rakmagic-worker-0.6.6-ui'])
+    const code=runtime;
+    for(const name of ['index-wispbyte.js','app-0.6.6-ui.cjs','lib','bin'])
       fs.cpSync(path.join(root,name),path.join(code,name),{recursive:true});
     fs.writeFileSync(path.join(runtime,'.env'),'RAKMAGIC_WG_ENABLED=0\n');
     fs.mkdirSync(path.join(runtime,'state'));
@@ -24,8 +24,6 @@ test('Wispbyte entrypoint keeps private state outside the deployed code and star
     assert.doesNotMatch(result.stdout,/Conectando a /);
     assert.ok(fs.existsSync(path.join(runtime,'state/host-key.pem')));
     assert.ok(fs.existsSync(path.join(runtime,'host-key.json')));
-    assert.equal(fs.existsSync(path.join(code,'state')),false);
-    assert.equal(fs.existsSync(path.join(code,'host-key.json')),false);
     assert.equal(fs.readFileSync(path.join(runtime,'state/keep.txt'),'utf8'),'existing state');
   }finally{fs.rmSync(runtime,{recursive:true,force:true});}
 });

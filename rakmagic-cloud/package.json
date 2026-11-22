@@ -1,0 +1,7 @@
+{
+  "name": "rakmagic-deployment-check-compatibility",
+  "private": true,
+  "scripts": {
+    "verify": "node ../scripts/verify-deploy.cjs"
+  }
+}

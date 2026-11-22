@@ -10,7 +10,5 @@ for(const [name,expected] of Object.entries(manifest.files)){
     throw Error('Archivo incompleto o diferente: '+name);
 }
 for(const name of ['index-wispbyte.js','app-0.6.6-ui.cjs'])execFileSync(process.execPath,['--check',path.join(root,name)]);
-if(process.platform==='linux'){
-  for(const name of ['rakmagic-worker-0.6.6-ui','rakmagic-wireguard-0.6.5'])fs.chmodSync(path.join(root,name),0o700);
-}
+require(path.join(root,'app-0.6.6-ui.cjs'));
 console.log('RakMagic 0.6.6: archivos completos; diagnostico pasivo. No se conectaron cuentas.');
