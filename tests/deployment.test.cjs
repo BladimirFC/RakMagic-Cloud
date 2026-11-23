@@ -8,7 +8,7 @@ test('Wispbyte entrypoint keeps existing private state at the server root and st
   const runtime=fs.mkdtempSync(path.join(os.tmpdir(),'rakmagic-deploy-'));
   try{
     const code=runtime;
-    for(const name of ['index-wispbyte.js','app-0.6.8-ui.cjs','lib','bin'])
+    for(const name of ['index-wispbyte.js','app-0.6.9-ui.cjs','lib','bin'])
       fs.cpSync(path.join(root,name),path.join(code,name),{recursive:true});
     fs.writeFileSync(path.join(runtime,'.env'),'RAKMAGIC_WG_ENABLED=0\n');
     fs.mkdirSync(path.join(runtime,'state'));
@@ -19,7 +19,7 @@ test('Wispbyte entrypoint keeps existing private state at the server root and st
     });
     assert.equal(result.status,0,result.stderr+'\n'+result.stdout);
     assert.match(result.stdout,/"cuentasActivas": 0/);
-    assert.match(result.stdout,/"loginAutomatico": false/);
+    assert.match(result.stdout,/"loginAutomatico": true/);
     assert.match(result.stdout,/WireGuard desactivado/);
     assert.doesNotMatch(result.stdout,/Conectando a /);
     assert.ok(fs.existsSync(path.join(runtime,'state/host-key.pem')));

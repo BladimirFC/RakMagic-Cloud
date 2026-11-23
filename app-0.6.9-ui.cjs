@@ -11,6 +11,7 @@ const {ConnectionDiagnostic}=require('./lib/connection-diagnostic.cjs');
 const {LoginTrace}=require('./lib/login-trace.cjs');
 const {AdminKickCooldown}=require('./lib/admin-kick-cooldown-ui-0.6.6.cjs');
 const {Automation,normalize,newGamersHost}=require('./lib/automation.cjs');
+const {RecordedAccess}=require('./lib/recorded-access.cjs');
 const {identity,decryptProfile,redact}=require('./lib/profile.cjs');
 const {wire}=require('./lib/encoding.cjs');
 const {newIpPassword}=require('./lib/config.cjs');
@@ -29,9 +30,9 @@ function inWindow(settings,date=new Date()){
   return settings.start<settings.end?minute>=settings.start&&minute<settings.end:minute>=settings.start||minute<settings.end;
 }
 class CloudClient extends EventEmitter {
-  constructor(worker,directory,profile,{restoreAccountChoice=true,afkOnly=false,diagnosticOnly=false}={}){
+  constructor(worker,directory,profile,{restoreAccountChoice=true,afkOnly=false,diagnosticOnly=false,recordedLogin=false}={}){
     super();this.worker=worker;this.directory=directory;this.profile=profile;
-    this.diagnosticOnly=diagnosticOnly;
+    this.diagnosticOnly=diagnosticOnly;this.recordedLogin=recordedLogin;this.loginGuard=null;this.loginStopped=false;
     this.afkOnly=afkOnly;this.spawnTryAt=0;this.spawnChecks=0;this.accessRejection='';this.accessCompleted=false;this.mapLocation=null;this.mapPositionSignature='';
     this.accountSource={host:profile.host,port:profile.port,nickname:profile.nickname};
     const choice=restoreAccountChoice?readChoice(directory,this.accountSource):null;
@@ -55,6 +56,7 @@ class CloudClient extends EventEmitter {
   event(event){
     this.connectionDiagnostic.observe(event);
     this.loginTrace.observe(event);
+    this.loginGuard?.observe(event);if(this.loginGuard?.failure)this.accessCompleted=false;
     this.emit('nativeEvent',event); // Used only by the isolated integration test, no credential output.
     const s=this.snapshot;
     switch(event.type){
@@ -73,7 +75,7 @@ class CloudClient extends EventEmitter {
           this.nextRetry=this.reconnectCooldown.until;
           this.notice('Expulsion administrativa de esta cuenta detectada. No se intentara entrar durante 20 minutos; hasta '+new Date(this.nextRetry).toISOString()+'.');
         }
-        const accessWasReady=previous===3&&(this.accessCompleted||this.spawned&&this.engine?.completed===this.profile.steps.length)&&!this.blocked;
+        const accessWasReady=previous===3&&(this.accessCompleted||!this.recordedLogin&&this.spawned&&this.engine?.completed===this.profile.steps.length)&&!this.blocked;
         const preLoginClose=!administrativeKick&&event.state===0&&previous>=2&&this.desired&&event.text==='El servidor cerro la conexion'&&!accessWasReady;
         if(preLoginClose){
           this.loginTrace.closed({...s,state:previous},this.engine,this.spawned,true);
@@ -92,6 +94,7 @@ class CloudClient extends EventEmitter {
         this.notice(event.state===3?'Servidor disponible: '+String(event.text||'').replace(/^Conectado:\s*/,''):event.text);break;
       }
       case 'workerStatus':{
+        this.loginSpawnReady=event.loginSpawnReady===true;
         this.spawned=event.spawned;this.paused=event.paused;this.interior=event.interior;
         const p=event.mapPosition,revision=event.mapPositionRevision;
         if(event.state===3&&event.mapPositionKnown===true&&Number.isSafeInteger(revision)&&revision>0&&Array.isArray(p)&&p.length===3&&p.every(n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=100000)){
@@ -153,19 +156,61 @@ class CloudClient extends EventEmitter {
       this.accessCompleted=false;this.mapLocation=null;this.mapPositionSignature='';
       this.accessRejection='';
       this.spawnTryAt=0;this.spawnChecks=0;
+      this.loginSpawnReady=false;
       await this.worker.command('autoSpawn',!this.diagnosticOnly&&this.profile.autoSpawn?1:0,wire(this.profile.loginMessage));
-      this.engine=this.diagnosticOnly?null:new Automation(this.profile.steps,this.worker,Date.now(),{newIpVerification:newGamersHost(this.profile.host),newIpPassword:this.profile.newIpPassword,flexibleLogin:this.afkOnly&&newGamersHost(this.profile.host)});
+      if(!this.prepareLogin())return false;
       const ok=await this.worker.connect(address.address,this.profile.port,this.profile.nickname,this.profile.serverPassword);
       if(generation!==this.generation)return false;
       if(!ok)throw new Error('CONNECT_FAILED');
-      this.notice(this.diagnosticOnly?'Diagnostico: login y AFK automaticos desactivados. Negociacion de interfaz solo por orden manual.':this.afkWanted?'Iniciando el acceso grabado; AFK se activara al aparecer.':'Iniciando el acceso grabado; AFK desactivado para esta cuenta.');return true;
+      this.notice(this.recordedLogin?'Acceso grabado habilitado para esta conexion manual; AFK y reconexion desactivados.':this.diagnosticOnly?'Diagnostico: login y AFK automaticos desactivados. Negociacion de interfaz solo por orden manual.':this.afkWanted?'Iniciando el acceso grabado; AFK se activara al aparecer.':'Iniciando el acceso grabado; AFK desactivado para esta cuenta.');return true;
     }catch(error){
       if(generation===this.generation){this.notice(error.code==='WIREGUARD'?error.message:'No se pudo iniciar la conexion.');if(this.desired&&this.profile.reconnect.enabled)this.nextRetry=Date.now()+[30000,60000,120000,240000,300000][Math.min(this.attempts++,4)];}
       return false;
     }finally{if(generation===this.generation)this.connecting=false;}
   }
+  prepareLogin(){
+    this.loginGuard=this.recordedLogin?new RecordedAccess(this.profile,this.worker,()=>this.snapshot):null;
+    this.loginStopped=false;
+    if(this.loginGuard?.failure){this.blocked=true;this.desired=false;this.notice(this.loginGuard.failure);this.engine=null;return false;}
+    this.engine=this.diagnosticOnly&&!this.recordedLogin?null:new Automation(this.profile.steps,this.loginGuard||this.worker,Date.now(),{
+      newIpVerification:newGamersHost(this.profile.host),newIpPassword:this.profile.newIpPassword,flexibleLogin:this.afkOnly&&newGamersHost(this.profile.host)});
+    return true;
+  }
+  stopRecordedAccess(reason){
+    this.blocked=true;this.desired=false;this.nextRetry=0;this.accessCompleted=false;
+    this.engine?.stop(reason);if(this.snapshot.dialog)this.stoppedDialog={...this.snapshot.dialog};
+    if(!this.loginStopped){this.loginStopped=true;this.notice(reason);this.notice('Acceso detenido sin reintentos. Consulta interfaz canales para ver la pantalla recibida.');this.emit('connectionReviewRequired');}
+  }
+  async pumpRecordedAccess(){
+    if(this.busy||this.worker.closed)return;
+    if(this.loginGuard?.failure){this.stopRecordedAccess(this.loginGuard.failure);return;}
+    if(this.blocked||!this.desired||!this.engine||this.accessCompleted)return;
+    this.busy=true;
+    try{
+      const engine=this.engine,message=await engine.pump(this.snapshot);
+      if(engine!==this.engine)return;
+      if(message)this.notice(message);
+      if(this.loginGuard?.failure||engine.failed){this.stopRecordedAccess(this.loginGuard?.failure||'El login grabado encontro una pantalla distinta.');return;}
+      if(engine.completed===this.profile.steps.length&&this.loginGuard.passwordSent&&!this.loginGuard.playSent
+        &&!this.snapshot.dialog&&this.snapshot.selecting){
+        const matches=[...this.snapshot.textdraws.values()].filter(td=>td.selectable&&normalize(td.text).toLowerCase()==='jugar');
+        if(matches.length>1){this.stopRecordedAccess('Hay varios botones Jugar; no se enviara una seleccion ambigua.');return;}
+        if(matches.length===1){await this.loginGuard.click(matches[0].id,matches[0].revision);this.notice('Jugar enviado al personaje verificado.');}
+      }
+      if(this.loginGuard.confirmed(engine.completed,this.profile.steps.length,this.spawned)){
+        this.accessCompleted=true;this.notice('Acceso completado tras el login y una nueva aparicion autorizada. AFK desactivado.');
+        if(this.mapLocation)this.emit('mapLocation',this.mapLocation);
+      }
+      if(!this.accessCompleted&&engine.completed===this.profile.steps.length&&this.loginGuard.passwordSent
+        &&!this.loginGuard.postPasswordSpawn&&!this.loginGuard.spawnRequested&&this.loginSpawnReady
+        &&!this.snapshot.dialog&&!this.snapshot.selecting){
+        await this.loginGuard.spawn();this.notice('Aparicion solicitada una vez tras el acceso grabado.');
+      }
+    }catch(_){this.stopRecordedAccess(this.loginGuard?.failure||'No se pudo completar el acceso grabado.');}
+    finally{this.busy=false;}
+  }
   async negotiateUiInventory(){
-    if(!this.diagnosticOnly||this.snapshot.state!==3||this.snapshot.dialog||this.worker.closed)return false;
+    if(this.recordedLogin||!this.diagnosticOnly||this.snapshot.state!==3||this.snapshot.dialog||this.worker.closed)return false;
     return this.worker.command('uiInventoryEmpty');
   }
   async disconnect(){
@@ -230,6 +275,7 @@ class CloudClient extends EventEmitter {
     this.notice(enabled?'Analizador activo: cajas hasta $600 por placa, horario de Cuba.':'Analizador pausado.');
   }
   async pump(){
+    if(this.recordedLogin)return this.pumpRecordedAccess();
     if(this.diagnosticOnly)return;
     if(this.busy||this.worker.closed)return;this.busy=true;
     try{
@@ -304,21 +350,21 @@ class CloudClient extends EventEmitter {
       }:null
     };
   }
-  connectionInfo(){return {...this.connectionDiagnostic.report(this.profile.nickname,this.snapshot.state,!this.worker.closed),acceso:this.loginTrace.report(this.snapshot,this.engine,this.spawned),red:this.worker.wireguard?.info()??{transporte:'directo'},pausaReconex:this.reconnectCooldown.info(),...(this.worker.nativeInterface?{interfazNativa:this.worker.nativeInterface.report()}:{} )};}
+  connectionInfo(){return {...this.connectionDiagnostic.report(this.profile.nickname,this.snapshot.state,!this.worker.closed),acceso:this.loginTrace.report(this.snapshot,this.engine,this.spawned),red:this.worker.wireguard?.info()??{transporte:'directo'},pausaReconex:this.reconnectCooldown.info(),...(this.loginGuard?{reproduccionLogin:this.loginGuard.report()}:{}),...(this.worker.nativeInterface?{interfazNativa:this.worker.nativeInterface.report()}:{} )};}
   status(){
     let nativeMemory=null;
     try{const match=fs.readFileSync('/proc/'+this.worker.child.pid+'/status','utf8').match(/^VmRSS:\s+(\d+) kB/m);if(match)nativeMemory=Math.round(Number(match[1])/1024);}catch(_){}
-    return {...this.reconnectCooldown.info(),modoDiagnostico:this.diagnosticOnly,cuenta:this.profile.nickname,servidor:this.profile.host+':'+this.profile.port,estado:this.snapshot.state,loginPasos:this.engine?.completed||0,loginTotal:this.profile.steps.length,aparecido:this.spawned,accesoCompletado:this.accessCompleted,afk:this.paused,afkSolicitado:this.afkWanted,interior:this.interior??-1,reconexion:this.desired&&this.profile.reconnect.enabled&&!this.blocked,requiereRevision:this.blocked,mensajeServidor:this.accessRejection,mercadoActivo:this.marketEnabled,mercadoRevisando:this.market?.active===true,mercadoEtapa:this.market?.phase??'sin preparar',memoriaNodeMiB:Math.round(process.memoryUsage().rss/1048576),memoriaClienteMiB:nativeMemory,diagnosticoConexion:this.connectionInfo(),...(this.vehicleTrial?{pruebaVehiculo:this.vehicleTrial.status()}:{} )};
+    return {...this.reconnectCooldown.info(),modoDiagnostico:this.diagnosticOnly&&!this.recordedLogin,loginGrabado:this.recordedLogin,verificacionLogin:this.loginGuard?.report()??null,cuenta:this.profile.nickname,servidor:this.profile.host+':'+this.profile.port,estado:this.snapshot.state,loginPasos:this.engine?.completed||0,loginTotal:this.profile.steps.length,aparecido:this.spawned,accesoCompletado:this.accessCompleted,afk:this.paused,afkSolicitado:this.afkWanted,interior:this.interior??-1,reconexion:this.desired&&this.profile.reconnect.enabled&&!this.blocked,requiereRevision:this.blocked,mensajeServidor:this.accessRejection,mercadoActivo:this.marketEnabled,mercadoRevisando:this.market?.active===true,mercadoEtapa:this.market?.phase??'sin preparar',memoriaNodeMiB:Math.round(process.memoryUsage().rss/1048576),memoriaClienteMiB:nativeMemory,diagnosticoConexion:this.connectionInfo(),...(this.vehicleTrial?{pruebaVehiculo:this.vehicleTrial.status()}:{} )};
   }
 }
-async function createCloudClient(directory,profile,{vehicleGate=null,afkOnly=false,ngCompatibility=false,wireguard=null,nativeUiDiagnostics=false,diagnosticOnly=false}={}){
+async function createCloudClient(directory,profile,{vehicleGate=null,afkOnly=false,ngCompatibility=false,wireguard=null,nativeUiDiagnostics=false,diagnosticOnly=false,recordedLogin=false}={}){
   if(wireguard)await wireguard.start();
-  const worker=new Worker(workerPath(__dirname),{ngCompatibility,wireguard,nativeUiDiagnostics,redactNativeText:text=>redact(text,profile)});
+  const worker=new Worker(workerPath(__dirname),{ngCompatibility,wireguard,nativeUiDiagnostics,recordedLogin,redactNativeText:text=>redact(text,profile)});
   if(wireguard){const lost=()=>worker.close().catch(()=>{});wireguard.once('lost',lost);worker.once('closed',()=>wireguard.removeListener('lost',lost));}
   try{
     await new Promise((resolve,reject)=>{
       const ready=event=>{if(event.type==='workerReady'){
-        if(nativeUiDiagnostics&&(event.version!=='native-ui-0.6.8'||event.packetInventory!==true||event.uiInventoryProbe!==true||event.nativeUiObserver!==true||event.readOnlyUi!==true)){
+        if(nativeUiDiagnostics&&(event.version!=='native-ui-0.6.9'||event.packetInventory!==true||event.recordedLogin!==recordedLogin||event.nativeUiObserver!==true||event.readOnlyUi!==!recordedLogin)){
           const error=Error('El ejecutable no admite este diagnostico. Extrae tambien bin/rakmagic-worker-0.6.8-ui del despliegue.');error.code='NATIVE_UI_UNSUPPORTED';finish(error);
         }else finish();
       }};
@@ -326,19 +372,21 @@ async function createCloudClient(directory,profile,{vehicleGate=null,afkOnly=fal
       const finish=error=>{clearTimeout(timer);worker.removeListener('event',ready);worker.removeListener('closed',closed);error?reject(error):resolve();};
       const timer=setTimeout(()=>finish(Error('WORKER_TIMEOUT')),3000);worker.on('event',ready);worker.once('closed',closed);
     });
-    const client=new CloudClient(worker,directory,profile,{restoreAccountChoice:false,afkOnly,diagnosticOnly});
+    const client=new CloudClient(worker,directory,profile,{restoreAccountChoice:false,afkOnly,diagnosticOnly,recordedLogin});
     if(vehicleGate)new VehicleDiagnostic(client,vehicleGate);
     return client;
   }catch(error){await worker.close();throw error;}
 }
-async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=true,diagnosticOnly=true,dataDirectory=__dirname}={}){
+async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=true,diagnosticOnly=true,recordedLogin=true,dataDirectory=__dirname}={}){
   const directory=path.resolve(dataDirectory);
+  if(recordedLogin){diagnosticOnly=true;afkOnly=true;vehicleDiagnostics=false;}
   vehicleDiagnostics=vehicleDiagnostics&&!afkOnly;
   const vehicleGate=vehicleDiagnostics?new VehicleGate():null;
   let key;
   try{key=identity(directory);}catch(_){console.error('No se pudo cargar la identidad privada del hosting. Conserva state/host-key.pem.');process.exitCode=1;return;}
-  console.log('RAKMAGIC CLOUD 0.6.8 - FALCONIX - DIAGNOSTICO INTERFAZ NATIVA - NEGOCIACION MANUAL');
-  if(diagnosticOnly)console.log('Diagnostico manual: arranque de cuentas, login automatico, reconexion y AFK desactivados.');
+  console.log('RAKMAGIC CLOUD 0.6.9 - FALCONIX - LOGIN GRABADO - CONEXION MANUAL');
+  if(recordedLogin)console.log('Login grabado activo al conectar manualmente. Arranque automatico, reconexion y AFK desactivados.');
+  else if(diagnosticOnly)console.log('Diagnostico manual: arranque de cuentas, login automatico, reconexion y AFK desactivados.');
   console.log('Clave publica: descarga host-key.json desde Archivos. Huella SHA-256: '+key.fingerprint);
   try{prepareWorker(__dirname);}catch(error){console.error(error.message);process.exitCode=1;return;}
   const feed=new MarketFeed(directory);let feedServer=null,manager=null,ending=false,commands=Promise.resolve(),restoreTimer=null;
@@ -354,7 +402,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
     ngCompatibility=value==='1';
   }catch(_){console.log('RAKMAGIC_NG_COMPAT debe ser 0 o 1.');process.exitCode=1;return;}
   if(diagnosticOnly)ngCompatibility=false;
-  console.log(diagnosticOnly?'Compatibilidad experimental de launcher desactivada. Respuesta de inventario F4 disponible solo con interfaz negociar Nombre_Apellido.':ngCompatibility?'Compatibilidad PC experimental activada para NewGamers. La aceptacion del servidor no esta confirmada.':'Compatibilidad PC experimental desactivada. RAKMAGIC_NG_COMPAT=1 permite activarla.');
+  console.log(recordedLogin?'Acceso por dialogos SA-MP; se comprobara la cuenta antes de enviar la clave. Negociacion F4 desactivada.':diagnosticOnly?'Compatibilidad experimental de launcher desactivada. Respuesta de inventario F4 disponible solo con interfaz negociar Nombre_Apellido.':ngCompatibility?'Compatibilidad PC experimental activada para NewGamers. La aceptacion del servidor no esta confirmada.':'Compatibilidad PC experimental desactivada. RAKMAGIC_NG_COMPAT=1 permite activarla.');
 
   let vpn;
   try{
@@ -392,14 +440,15 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
     const current=manager=new SessionManager(directory,profile,{limit,feed:afkOnly?null:feed,button,createClient:async p=>{
       if(afkOnly){p.autoSpawn=true;p.reconnect.enabled=true;}
       if(diagnosticOnly){p.autoStart=false;p.autoSpawn=false;p.reconnect.enabled=false;p.afk=false;}
-      const client=await createCloudClient(directory,p,{vehicleGate,afkOnly,ngCompatibility:ngCompatibility&&newGamersHost(p.host),wireguard:vpn,nativeUiDiagnostics,diagnosticOnly});
+      const client=await createCloudClient(directory,p,{vehicleGate,afkOnly,ngCompatibility:ngCompatibility&&newGamersHost(p.host),wireguard:vpn,nativeUiDiagnostics,diagnosticOnly,recordedLogin});
       client.on('mapLocation',location=>control.map.capture({host:p.host,port:p.port},p.nickname,location));return client;
     }});
     current.vpn=vpn;
     current.on('notice',message=>console.log(message));
     console.log('Perfil cargado: '+profile.nickname+'. Comprueba que esa cuenta este desconectada en el movil.');
     console.log('Capacidad: '+limit+' cuentas simultaneas. Conecta cada una por su nombre desde RakMagic.');
-    if(diagnosticOnly)console.log('Diagnostico preparado. Ninguna cuenta se conecta al iniciar. Consulta interfaz estado.');
+    if(recordedLogin)console.log('Acceso preparado. Usa conectar Nombre_Apellido; ninguna cuenta se conecta al iniciar.');
+    else if(diagnosticOnly)console.log('Diagnostico preparado. Ninguna cuenta se conecta al iniciar. Consulta interfaz estado.');
     else if(afkOnly)console.log('Modo cuentas: aparicion automatica; AFK segun la preferencia de cada cuenta; reconexion durante todo el dia. Mercado y rutas desactivados.');
     let pending=[...current.restoreNames].slice(0,limit);
     const restore=()=>{restoreTimer=setTimeout(()=>enqueue(async()=>{
@@ -432,7 +481,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
     }catch(_){return {code:422,body:{message:'No se pudo preparar el perfil. Comprueba el login guardado y vuelve a vincular si cambio la clave del hosting.'}};}
     finally{try{fs.unlinkSync(temporary);}catch(_){}}
   });
-  const help=()=>{console.log('Comandos: interfaz estado | interfaz diagnostico [Nombre_Apellido] | interfaz canales [Nombre_Apellido] | interfaz negociar Nombre_Apellido | vincular | vpn estado | estado | cuentas | cuenta Nombre_Apellido | conectar [Nombre_Apellido] | desconectar [Nombre_Apellido|todas] | recargar | dialogo | conexion diagnostico [Nombre_Apellido] | salir');};
+  const help=()=>{console.log('Comandos: interfaz estado | interfaz diagnostico [Nombre_Apellido] | interfaz canales [Nombre_Apellido] | vincular | vpn estado | estado | cuentas | cuenta Nombre_Apellido | conectar [Nombre_Apellido] | desconectar [Nombre_Apellido|todas] | recargar | dialogo | conexion diagnostico [Nombre_Apellido] | salir');};
   const input=readline.createInterface({input:process.stdin,terminal:false});
   input.on('line',line=>{
     if(line.length>256)return;
@@ -443,7 +492,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
       if(command==='salir'){await shutdown();return;}
       if(command==='ayuda'){help();return;}
       if(command==='interfaz estado'){
-        console.log(JSON.stringify({version:'0.6.8',paso:2,lecturaInterfaz:nativeUiDiagnostics,inventarioPaquetes:true,negociacionInterfazManual:true,modo:diagnosticOnly?'diagnostico-manual':'normal',arranqueAutomatico:!diagnosticOnly,loginAutomatico:!diagnosticOnly,afkAutomatico:!diagnosticOnly,cuentasActivas:manager?.clients.size??0,valoresEntradaRegistrados:false,accionesInterfazImplementadas:false},null,2));return;
+        console.log(JSON.stringify({version:'0.6.9',paso:3,lecturaInterfaz:nativeUiDiagnostics,inventarioPaquetes:true,negociacionInterfazManual:!recordedLogin,modo:recordedLogin?'login-grabado':diagnosticOnly?'diagnostico-manual':'normal',arranqueAutomatico:!diagnosticOnly,loginAutomatico:recordedLogin||!diagnosticOnly,afkAutomatico:!diagnosticOnly,cuentasActivas:manager?.clients.size??0,valoresEntradaRegistrados:false,accionesInterfazImplementadas:recordedLogin},null,2));return;
       }
       if(command==='vpn estado'){console.log(JSON.stringify(vpn.info(),null,2));return;}
       if(command==='vincular'){
@@ -461,7 +510,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
       }
       else if(command==='interfaz canales'||/^interfaz canales [A-Za-z0-9_\[\]().$=@]{3,24}$/.test(command)){
         const nickname=parts[2]||manager.selected,info=manager.connectionInfo(nickname),data=info.datos,ui=info.interfazNativa;
-        console.log(JSON.stringify({version:'0.6.8',cuenta:nickname,disponible:data?.packetInventoryAvailable===true,
+        console.log(JSON.stringify({version:'0.6.9',cuenta:nickname,disponible:data?.packetInventoryAvailable===true,
           estado:info.estadoActual,paquetes:data?.packetTypes??[],rpcsSinManejar:data?.unhandledRpcs??[],
           interfazF4:ui?{operaciones:ui.operacionesRecibidas,controles:ui.totalControles,lecturaCompleta:ui.lecturaCompleta}:null,
           pantallaSamp:info.acceso?.estadoActual??null,ultimoDialogo:info.acceso?.ultimoDialogoRecibido??null,
@@ -470,6 +519,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
           negociacion:ui?.negociacion??null,accionesEnviadas:ui?.accionesEnviadas??0,accionesControlesEnviadas:0,aviso:'Metadatos de recepcion; no incluyen cuerpos de paquetes ni confirman acceso a la cuenta.'},null,2));
       }
       else if(/^interfaz negociar [A-Za-z0-9_\[\]().$=@]{3,24}$/.test(command)){
+        if(recordedLogin){console.log('El acceso grabado usa los dialogos SA-MP; negociacion F4 desactivada.');return;}
         const target=manager.target(parts[2]);
         if(!target||!await target.negotiateUiInventory())console.log('No se envio el inventario: la cuenta debe estar conectada sin un dialogo SA-MP abierto, haber recibido la solicitud F4 y no haber respondido ya en este intento.');
         else console.log('['+target.profile.nickname+'] Inventario vacio de interfaces puesto en cola. Espera nuevos mensajes y consulta interfaz canales. Login y AFK siguen desactivados.');

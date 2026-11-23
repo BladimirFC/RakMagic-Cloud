@@ -15,6 +15,10 @@ std::string cloudNativeUiTransport();
 
 namespace {
 volatile sig_atomic_t stopping = 0;
+bool recordedLoginEnabled(){
+    static const bool enabled=[](){const char* value=std::getenv("RAKMAGIC_RECORDED_LOGIN");return value&&std::string(value)=="1";}();
+    return enabled;
+}
 void stopSignal(int) { stopping = 1; }
 JNIEnv env;
 bool decode(const std::string& input, std::vector<jbyte>& output) {
@@ -35,7 +39,8 @@ void status();
 bool execute(const std::string& line){
     std::istringstream in(line);unsigned id;std::string command;
     if(!(in>>id>>command)||id==0||id>2147483647)return false;
-    if(command=="send"||command=="reply"||command=="click"||command=="spawn"||command=="pause"||command=="restorePause"||command=="restoreMenuPause"||command=="cancelSelection"){
+    const bool loginAction=command=="reply"||command=="click"||command=="spawn"||command=="cancelSelection";
+    if(command=="send"||command=="pause"||command=="restorePause"||command=="restoreMenuPause"||(loginAction&&!recordedLoginEnabled())){
         response(id,false);return true;
     }
     std::array<std::vector<jbyte>,4> values;
@@ -43,7 +48,7 @@ bool execute(const std::string& line){
     bool ok=false;
     if(command=="uiInventoryEmpty"){
         std::lock_guard<std::mutex> lock(guard);
-        ok=nativeUiInventory.sendEmptyInventory(state==3&&client,[](const std::array<unsigned char,5>& bytes){
+        ok=nativeUiInventory.sendEmptyInventory(!recordedLoginEnabled()&&state==3&&client,[](const std::array<unsigned char,5>& bytes){
             RakNet::BitStream output;output.Write(reinterpret_cast<const char*>(bytes.data()),int(bytes.size()));
             return client->Send(&output,HIGH_PRIORITY,RELIABLE_ORDERED,5);
         });
@@ -82,6 +87,7 @@ void status(){
     if(mapKnown)mapValue<<"["<<position[0]<<","<<position[1]<<","<<position[2]<<"]";else mapValue<<"null";
     std::cout<<"{\"type\":\"workerStatus\",\"state\":"<<state<<",\"spawned\":"<<(spawned?"true":"false")
         <<",\"paused\":"<<(clientPaused?"true":"false")<<",\"interior\":"<<(interiorKnown?int(interiorId):-1)
+        <<",\"loginSpawnReady\":"<<((state==3&&!spawned&&!spectating&&!spawnPending&&!serverSpawnAuthorized&&(spawnInfoReady||classCount>0))?"true":"false")
         <<",\"mapPositionKnown\":"<<(mapKnown?"true":"false")<<",\"mapPositionRevision\":"<<positionSequence<<",\"mapPosition\":"<<mapValue.str()
         <<",\"connectionDiagnostic\":"<<connectionDiagnostics.json(state)
         <<",\"launcherCompatibility\":"<<pcCompatibility.json()<<",\"nativeUiTransport\":"<<cloudNativeUiTransport()
@@ -93,7 +99,7 @@ int main(){
     std::cout.setf(std::ios::unitbuf);
     std::string input;auto lastStatus=std::chrono::steady_clock::now();
     autoSpawnEnabled=false;
-    std::cout<<"{\"type\":\"workerReady\",\"version\":\"native-ui-0.6.8\",\"connectionDiagnostics\":true,\"afkOnly\":true,\"serverMenus\":false,\"accountMap\":true,\"launcherCompatibility\":false,\"packetInventory\":true,\"uiInventoryProbe\":true,\"nativeUiObserver\":true,\"readOnlyUi\":true}\n";
+    std::cout<<"{\"type\":\"workerReady\",\"version\":\"native-ui-0.6.9\",\"connectionDiagnostics\":true,\"afkOnly\":true,\"serverMenus\":false,\"accountMap\":true,\"launcherCompatibility\":false,\"packetInventory\":true,\"uiInventoryProbe\":"<<(recordedLoginEnabled()?"false":"true")<<",\"nativeUiObserver\":true,\"recordedLogin\":"<<(recordedLoginEnabled()?"true":"false")<<",\"readOnlyUi\":"<<(recordedLoginEnabled()?"false":"true")<<"}\n";
     while(!stopping){
         pollfd fd{STDIN_FILENO,POLLIN,0};int count=poll(&fd,1,20);
         if(count>0&&(fd.revents&(POLLIN|POLLHUP))){

@@ -1,7 +1,7 @@
 {
   "name": "rakmagic-cloud",
-  "version": "0.6.8",
-  "description": "Falconix: inventario pasivo y prueba manual de negociacion de interfaces",
+  "version": "0.6.9",
+  "description": "Falconix: login grabado al conectar manualmente; sin AFK ni reconexion",
   "private": true,
   "license": "GPL-2.0-or-later",
   "engines": {

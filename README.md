@@ -1,108 +1,81 @@
 # RakMagic Cloud
 
-Versión 0.6.8: diagnóstico de interfaz con prueba de negociación manual.
-El arranque de cuentas, el login automático, la reconexión y AFK están
-desactivados. Las acciones de interfaz todavía no están implementadas.
-Una conexión de red o un spawn no confirman el acceso a una cuenta.
-El nuevo inventario registra solo IDs, cantidades y tamaños, incluyendo
-los paquetes fuera del canal F4. No guarda cuerpos de paquetes. La única respuesta adicional se envía por orden manual, como se describe a continuación.
+Versión 0.6.9: acceso grabado al conectar una cuenta manualmente.
+Usa los diálogos SA-MP normales recibidos del servidor. El historial real
+confirmó que llega el diálogo **Confirmar cuenta**; no necesita negociar F4
+para responderlo. Este programa no acredita el uso del launcher oficial.
 
-## Despliegue en Wispbyte
+## Uso en Wispbyte
 
-- Repositorio: `BladimirFC/RakMagic-Cloud`.
-- Rama: `main`.
-- Carpeta en el servidor: `/` (raíz).
-- Actualizar con cada push y **conservar los archivos que no están en el repositorio**.
-- Paso de verificación: `cd /home/container && npm run verify`.
-- Archivo de arranque, **JS_FILE**: `index-diagnostico.js`.
+- Repositorio: `BladimirFC/RakMagic-Cloud`, rama `main`.
+- Carpeta: `/`, conservando los archivos que no están en el repositorio.
+- Verificación: `cd /home/container && npm run verify`.
+- Archivo de arranque **JS_FILE**: `index-diagnostico.js` (se mantiene el nombre).
 
-La ruta antigua de verificación,
-`cd /home/container/rakmagic-cloud && npm run verify`, también funciona:
-el pequeño paquete de compatibilidad de esa carpeta ejecuta la comprobación
-del programa instalado en la raíz. El programa y sus datos están en la raíz.
-`index-wispbyte.js` queda como alias de arranque con ese mismo directorio.
-
-Los commits reinician un servidor gratuito si ya está encendido. Si está
-apagado, hay que iniciarlo desde el panel. Wispbyte permite seis despliegues
-por hora y admite `[skip deploy]` en el mensaje de commit. El historial y la
-salida de cada ejecución aparecen en su pestaña GitHub.
-
-## Configuración privada y ejecutables
-
-```text
-/home/container/
-  .env                         configuración privada existente
-  cloud-profile.json           perfil cifrado existente
-  state/                       identidad, sesiones y preferencias existentes
-  wireguard.conf               configuración VPN privada, si se usa
-  index-diagnostico.js          inicio del programa
-  app-0.6.8-ui.cjs
-  lib/
-  bin/                         ejecutables distribuidos por GitHub
-  scripts/verify-deploy.cjs
-```
-
-Conservar archivos existentes mantiene `.env`, `state` y el perfil cifrado.
-No publiques esos archivos, claves, enlaces privados ni capturas de paquetes.
-No es necesario volver a exportar el perfil ni activar la VPN al actualizar.
-
-Los programas nativos se ejecutan desde copias verificadas por SHA-256 en
-el directorio temporal del contenedor. GitHub puede actualizar los originales
-de `bin/` mientras una copia está funcionando. Los ejecutables antiguos de la
-raíz quedan sin utilizar después del reinicio.
-
-## Uso
+La ruta antigua `cd /home/container/rakmagic-cloud && npm run verify`
+también funciona mediante el paquete de compatibilidad de esa carpeta.
+`index-wispbyte.js` es otro punto de entrada con el mismo modo de acceso.
 
 ```text
 interfaz estado
-interfaz diagnostico Nombre_Apellido
+conectar Nombre_Apellido
+estado
 interfaz canales Nombre_Apellido
-conexion diagnostico Nombre_Apellido
-vpn estado
+desconectar Nombre_Apellido
 ```
 
-Estas consultas no conectan cuentas. La conexión requiere una orden manual.
-Este programa no reproduce verificaciones de autenticación del launcher
-oficial ni ejecuta sus DLL.
+El estado inicial muestra `modo: login-grabado`, `loginAutomatico: true`,
+`arranqueAutomatico: false` y `afkAutomatico: false`.
+No se restauran cuentas al arrancar. La orden de conexión inicia el acceso
+con la clave del perfil cifrado existente, sin solicitarla por la consola.
 
-## Prueba manual del inventario F4
+## Condiciones del acceso grabado
 
-`interfaz negociar Nombre_Apellido` responde a una solicitud F4 ya recibida
-con una lista vacía de interfaces predefinidas. Se permite un solo intento
-por conexión, únicamente mientras esa cuenta tiene conexión de juego.
-Observar la solicitud no envía nada automáticamente. Este comando no conecta
-cuentas, no introduce la clave, no pulsa botones ni activa AFK.
-Si ya hay un diálogo SA-MP abierto, el comando no envía el inventario.
-El diagnóstico conserva los últimos ocho diálogos visibles y saneados para
-que un aviso de desconexión no oculte una pantalla de login anterior.
+Antes de aceptar **Si, es mia**, se comprueba que el usuario y el personaje
+indicados por el servidor correspondan a la cuenta elegida. Los pasos
+posteriores usan el recorrido exportado desde RakMagic y controles visibles
+que coincidan con él. Las claves solo se envían en campos de diálogo
+reconocidos; no se envían como chat ni se realizan registros o cambios de clave.
+Cada conexión admite una clave de cuenta y, si se solicita y está configurada,
+una verificación de nueva IP. Las solicitudes repetidas detienen el acceso.
 
-Tras conectar manualmente la cuenta, espera a que aparezca el servidor y
-reciba la operación F4 5, ejecuta el comando y consulta `interfaz canales`
-para comprobar si el servidor entrega una pantalla o un aviso diferente.
-`negociacion.respuestasEnviadas` significa que la respuesta entró en la cola
-local de envío; la aceptación remota permanece sin confirmar. Este cliente
-no anuncia interfaces predefinidas que no tiene implementadas.
+Si el recorrido termina antes de un botón **Jugar** visible y único, puede
+pulsarlo una vez para el personaje verificado. No se eligen personajes
+ambiguos. La entrada se marca completa al terminar los pasos, cerrar los
+controles de login y recibir otra aparición autorizada después de enviar la
+clave. La aparición inicial, anterior al formulario, no confirma acceso.
+
+AFK, mercado, rutas y reconexión automática permanecen desactivados en este
+modo. Una pantalla inesperada o un envío fallido detienen el acceso sin
+volver a enviar credenciales. `interfaz canales` conserva ocho diálogos
+saneados por intento, además del inventario de paquetes y mensajes visibles.
+La negociación manual F4 de las versiones de diagnóstico queda desactivada.
+
+## Archivos privados
+
+Conservar `.env`, `cloud-profile.json` y `state/` en la raíz mantiene la
+identidad, perfil cifrado, sesiones y preferencias. No publiques estos
+archivos, claves privadas, configuraciones VPN o enlaces de control.
+Los ejecutables distribuidos están en `bin/` y se ejecutan desde copias
+inmutables para permitir nuevas actualizaciones con el proceso en marcha.
+WireGuard conserva la opción de la configuración privada existente.
 
 ## Desarrollo
 
 Node.js 22 o posterior, Linux x86-64 y glibc 2.36 o posterior.
-Los binarios y las dependencias vendorizadas ya están incluidos.
 
 ```sh
 npm test
 npm run verify
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel 2
-cp build/rakmagic-worker bin/rakmagic-worker-0.6.8-ui
-strip bin/rakmagic-worker-0.6.8-ui
-cd wireguard
-CGO_ENABLED=0 go build -mod=vendor -trimpath -ldflags='-s -w' -o ../bin/rakmagic-wireguard-0.6.5 .
-cd ..
+cp build/rakmagic-worker bin/rakmagic-worker-0.6.9-ui
+strip bin/rakmagic-worker-0.6.9-ui
 node scripts/update-manifest.cjs
 npm run verify
 ```
 
-Los cambios nativos requieren actualizar el binario y su manifiesto en el
-mismo commit. `npm start` usa esta misma carpeta para los datos del programa.
-Licencia: GPL-2.0-or-later. Consulta `COPYING`, los archivos `LICENSE-*` y
+Los binarios y sus fuentes están incluidos; Wispbyte no necesita compilarlos.
+Actualiza el manifiesto y el ejecutable en el mismo commit si cambia el código
+nativo. Licencia GPL-2.0-or-later; consulta `COPYING`, `LICENSE-*` y
 `THIRD-PARTY-WIREGUARD.md` para las dependencias y sus atribuciones.

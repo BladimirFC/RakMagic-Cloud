@@ -1,14 +1,14 @@
 {
-  "version": "0.6.8",
-  "mode": "manual-diagnostic",
+  "version": "0.6.9",
+  "mode": "recorded-login-manual-connect",
   "entrypoint": "index-diagnostico.js",
   "dataDirectory": ".",
   "automaticAccountStart": false,
   "experimentalLauncherAuthentication": false,
   "files": {
-    "bin/rakmagic-worker-0.6.8-ui": {
-      "bytes": 1576792,
-      "sha256": "99acca86fd19f9029f4d355fc7fec4eb3f20de03aec89d8ce96c7f5d3136f23f"
+    "bin/rakmagic-worker-0.6.9-ui": {
+      "bytes": 1584984,
+      "sha256": "127872f3d325a4a4599e05ab297b2c9cc6656d93bd37765c2f8b2e350062636f"
     },
     "bin/rakmagic-wireguard-0.6.5": {
       "bytes": 7045244,

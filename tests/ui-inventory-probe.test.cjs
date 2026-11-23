@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {EventEmitter}=require('node:events'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {NativeUiDiagnostic}=require('../lib/native-ui-0.6.6.cjs');
-const {CloudClient}=require('../app-0.6.8-ui.cjs');
+const {CloudClient}=require('../app-0.6.9-ui.cjs');
 const probe=()=>({requests:1,attempted:true,repliesSent:1,sendFailures:0,interfaceCount:0});
 test('negotiation metadata reports a manual reply without claiming authentication or exposing extra fields',()=>{
   const value=new NativeUiDiagnostic();
