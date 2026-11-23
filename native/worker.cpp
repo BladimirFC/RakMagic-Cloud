@@ -41,7 +41,13 @@ bool execute(const std::string& line){
     std::array<std::vector<jbyte>,4> values;
     auto data=[&](int index){std::string s;return bool(in>>s)&&decode(s,values[index]);};
     bool ok=false;
-    if(command=="connect"){
+    if(command=="uiInventoryEmpty"){
+        std::lock_guard<std::mutex> lock(guard);
+        ok=nativeUiInventory.sendEmptyInventory(state==3&&client,[](const std::array<unsigned char,5>& bytes){
+            RakNet::BitStream output;output.Write(reinterpret_cast<const char*>(bytes.data()),int(bytes.size()));
+            return client->Send(&output,HIGH_PRIORITY,RELIABLE_ORDERED,5);
+        });
+    }else if(command=="connect"){
         int port;if(data(0)&&(in>>port)&&data(1)&&data(2))
             {cloudNativeUiReset();ok=Java_org_rakmagic_android_NativeBridge_connect(&env,nullptr,&values[0],port,&values[1],&values[2]);}
     }else if(command=="disconnect"){
@@ -78,7 +84,8 @@ void status(){
         <<",\"paused\":"<<(clientPaused?"true":"false")<<",\"interior\":"<<(interiorKnown?int(interiorId):-1)
         <<",\"mapPositionKnown\":"<<(mapKnown?"true":"false")<<",\"mapPositionRevision\":"<<positionSequence<<",\"mapPosition\":"<<mapValue.str()
         <<",\"connectionDiagnostic\":"<<connectionDiagnostics.json(state)
-        <<",\"launcherCompatibility\":"<<pcCompatibility.json()<<",\"nativeUiTransport\":"<<cloudNativeUiTransport()<<"}\n";
+        <<",\"launcherCompatibility\":"<<pcCompatibility.json()<<",\"nativeUiTransport\":"<<cloudNativeUiTransport()
+        <<",\"uiInventoryProbe\":"<<nativeUiInventory.json()<<"}\n";
 }
 }
 int main(){
@@ -86,7 +93,7 @@ int main(){
     std::cout.setf(std::ios::unitbuf);
     std::string input;auto lastStatus=std::chrono::steady_clock::now();
     autoSpawnEnabled=false;
-    std::cout<<"{\"type\":\"workerReady\",\"version\":\"native-ui-0.6.7\",\"connectionDiagnostics\":true,\"afkOnly\":true,\"serverMenus\":false,\"accountMap\":true,\"launcherCompatibility\":false,\"packetInventory\":true,\"nativeUiObserver\":true,\"readOnlyUi\":true}\n";
+    std::cout<<"{\"type\":\"workerReady\",\"version\":\"native-ui-0.6.8\",\"connectionDiagnostics\":true,\"afkOnly\":true,\"serverMenus\":false,\"accountMap\":true,\"launcherCompatibility\":false,\"packetInventory\":true,\"uiInventoryProbe\":true,\"nativeUiObserver\":true,\"readOnlyUi\":true}\n";
     while(!stopping){
         pollfd fd{STDIN_FILENO,POLLIN,0};int count=poll(&fd,1,20);
         if(count>0&&(fd.revents&(POLLIN|POLLHUP))){

@@ -1,7 +1,7 @@
 {
   "name": "rakmagic-cloud",
-  "version": "0.6.7",
-  "description": "Falconix: diagnostico pasivo de interfaz e inventario de paquetes",
+  "version": "0.6.8",
+  "description": "Falconix: inventario pasivo y prueba manual de negociacion de interfaces",
   "private": true,
   "license": "GPL-2.0-or-later",
   "engines": {

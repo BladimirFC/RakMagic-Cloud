@@ -1,4 +1,5 @@
 #include "ConnectionDiagnostics.h"
+#include "../native/ui-inventory-probe.hpp"
 #include <array>
 #include <cstdlib>
 #include <cstring>
@@ -38,5 +39,25 @@ int main() {
     value.reset();const auto reset=value.json(0);
     check(reset.find("\"packetTypes\":[]")!=std::string::npos);
     check(reset.find("\"inboundPackets\":0")!=std::string::npos);
+    UiInventoryProbe probe;unsigned calls=0;
+    auto send=[&](const std::array<unsigned char,5>& bytes){
+        ++calls;const std::array<unsigned char,5> expected{{248,100,3,0,0}};
+        check(bytes==expected);return true;
+    };
+    check(!probe.sendEmptyInventory(true,send));
+    unsigned char wrong[]{208,5},extra[]{248,5,1},request[]{248,5};
+    probe.observe(wrong,sizeof(wrong));probe.observe(extra,sizeof(extra));
+    check(!probe.sendEmptyInventory(true,send));
+    probe.observe(request,sizeof(request));
+    check(calls==0); // Observation alone must never send anything.
+    check(!probe.sendEmptyInventory(false,send));
+    check(probe.sendEmptyInventory(true,send));
+    check(calls==1&&!probe.sendEmptyInventory(true,send));
+    check(probe.json().find("\"repliesSent\":1")!=std::string::npos);
+    probe.reset();check(!probe.sendEmptyInventory(true,send));
+    probe.observe(request,sizeof(request));
+    check(!probe.sendEmptyInventory(true,[](const std::array<unsigned char,5>&){return false;}));
+    check(!probe.sendEmptyInventory(true,send));
+    check(probe.json().find("\"sendFailures\":1")!=std::string::npos);
     return 0;
 }

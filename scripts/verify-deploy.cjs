@@ -9,6 +9,6 @@ for(const [name,expected] of Object.entries(manifest.files)){
   if(bytes.length!==expected.bytes||crypto.createHash('sha256').update(bytes).digest('hex')!==expected.sha256)
     throw Error('Archivo incompleto o diferente: '+name);
 }
-for(const name of ['index-wispbyte.js','app-0.6.7-ui.cjs'])execFileSync(process.execPath,['--check',path.join(root,name)]);
-require(path.join(root,'app-0.6.7-ui.cjs'));
-console.log('RakMagic 0.6.7: archivos completos; diagnostico pasivo. No se conectaron cuentas.');
+for(const name of ['index-wispbyte.js','app-0.6.8-ui.cjs'])execFileSync(process.execPath,['--check',path.join(root,name)]);
+require(path.join(root,'app-0.6.8-ui.cjs'));
+console.log('RakMagic 0.6.8: archivos completos; diagnostico manual. No se conectaron cuentas.');

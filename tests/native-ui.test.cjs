@@ -4,7 +4,7 @@ const {EventEmitter,once}=require('node:events');
 const base=path.join(__dirname,'..');
 const {NativeUiDiagnostic,LIMITS}=require(path.join(base,'lib/native-ui-0.6.6.cjs'));
 const {Worker}=require(path.join(base,'lib/worker-ui-0.6.6.cjs'));
-const {CloudClient}=require(path.join(base,'app-0.6.7-ui.cjs'));
+const {CloudClient}=require(path.join(base,'app-0.6.8-ui.cjs'));
 const {SessionManager}=require(path.join(base,'lib/sessions-ui-0.6.6.cjs'));
 const b=(...n)=>Buffer.from(n),u16=n=>{const x=Buffer.alloc(2);x.writeUInt16LE(n);return x;};
 const s16=s=>{const x=Buffer.from(s);return Buffer.concat([u16(x.length),x]);};

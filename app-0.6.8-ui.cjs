@@ -158,11 +158,15 @@ class CloudClient extends EventEmitter {
       const ok=await this.worker.connect(address.address,this.profile.port,this.profile.nickname,this.profile.serverPassword);
       if(generation!==this.generation)return false;
       if(!ok)throw new Error('CONNECT_FAILED');
-      this.notice(this.diagnosticOnly?'Diagnostico de solo lectura: login y AFK automaticos desactivados.':this.afkWanted?'Iniciando el acceso grabado; AFK se activara al aparecer.':'Iniciando el acceso grabado; AFK desactivado para esta cuenta.');return true;
+      this.notice(this.diagnosticOnly?'Diagnostico: login y AFK automaticos desactivados. Negociacion de interfaz solo por orden manual.':this.afkWanted?'Iniciando el acceso grabado; AFK se activara al aparecer.':'Iniciando el acceso grabado; AFK desactivado para esta cuenta.');return true;
     }catch(error){
       if(generation===this.generation){this.notice(error.code==='WIREGUARD'?error.message:'No se pudo iniciar la conexion.');if(this.desired&&this.profile.reconnect.enabled)this.nextRetry=Date.now()+[30000,60000,120000,240000,300000][Math.min(this.attempts++,4)];}
       return false;
     }finally{if(generation===this.generation)this.connecting=false;}
+  }
+  async negotiateUiInventory(){
+    if(!this.diagnosticOnly||this.snapshot.state!==3||this.snapshot.dialog||this.worker.closed)return false;
+    return this.worker.command('uiInventoryEmpty');
   }
   async disconnect(){
     this.serverMenu.reset();
@@ -314,8 +318,8 @@ async function createCloudClient(directory,profile,{vehicleGate=null,afkOnly=fal
   try{
     await new Promise((resolve,reject)=>{
       const ready=event=>{if(event.type==='workerReady'){
-        if(nativeUiDiagnostics&&(event.version!=='native-ui-0.6.7'||event.packetInventory!==true||event.nativeUiObserver!==true||event.readOnlyUi!==true)){
-          const error=Error('El ejecutable no admite este diagnostico. Extrae tambien bin/rakmagic-worker-0.6.7-ui del despliegue.');error.code='NATIVE_UI_UNSUPPORTED';finish(error);
+        if(nativeUiDiagnostics&&(event.version!=='native-ui-0.6.8'||event.packetInventory!==true||event.uiInventoryProbe!==true||event.nativeUiObserver!==true||event.readOnlyUi!==true)){
+          const error=Error('El ejecutable no admite este diagnostico. Extrae tambien bin/rakmagic-worker-0.6.8-ui del despliegue.');error.code='NATIVE_UI_UNSUPPORTED';finish(error);
         }else finish();
       }};
       const closed=()=>finish(Error('WORKER_CLOSED'));
@@ -333,8 +337,8 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
   const vehicleGate=vehicleDiagnostics?new VehicleGate():null;
   let key;
   try{key=identity(directory);}catch(_){console.error('No se pudo cargar la identidad privada del hosting. Conserva state/host-key.pem.');process.exitCode=1;return;}
-  console.log('RAKMAGIC CLOUD 0.6.7 - FALCONIX - DIAGNOSTICO INTERFAZ NATIVA - PASO 1');
-  if(diagnosticOnly)console.log('Solo lectura: arranque de cuentas, login automatico, reconexion y AFK desactivados.');
+  console.log('RAKMAGIC CLOUD 0.6.8 - FALCONIX - DIAGNOSTICO INTERFAZ NATIVA - NEGOCIACION MANUAL');
+  if(diagnosticOnly)console.log('Diagnostico manual: arranque de cuentas, login automatico, reconexion y AFK desactivados.');
   console.log('Clave publica: descarga host-key.json desde Archivos. Huella SHA-256: '+key.fingerprint);
   try{prepareWorker(__dirname);}catch(error){console.error(error.message);process.exitCode=1;return;}
   const feed=new MarketFeed(directory);let feedServer=null,manager=null,ending=false,commands=Promise.resolve(),restoreTimer=null;
@@ -350,7 +354,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
     ngCompatibility=value==='1';
   }catch(_){console.log('RAKMAGIC_NG_COMPAT debe ser 0 o 1.');process.exitCode=1;return;}
   if(diagnosticOnly)ngCompatibility=false;
-  console.log(diagnosticOnly?'Diagnostico pasivo: no se envian anuncios ni respuestas de compatibilidad experimental.':ngCompatibility?'Compatibilidad PC experimental activada para NewGamers. La aceptacion del servidor no esta confirmada.':'Compatibilidad PC experimental desactivada. RAKMAGIC_NG_COMPAT=1 permite activarla.');
+  console.log(diagnosticOnly?'Compatibilidad experimental de launcher desactivada. Respuesta de inventario F4 disponible solo con interfaz negociar Nombre_Apellido.':ngCompatibility?'Compatibilidad PC experimental activada para NewGamers. La aceptacion del servidor no esta confirmada.':'Compatibilidad PC experimental desactivada. RAKMAGIC_NG_COMPAT=1 permite activarla.');
 
   let vpn;
   try{
@@ -428,7 +432,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
     }catch(_){return {code:422,body:{message:'No se pudo preparar el perfil. Comprueba el login guardado y vuelve a vincular si cambio la clave del hosting.'}};}
     finally{try{fs.unlinkSync(temporary);}catch(_){}}
   });
-  const help=()=>{console.log('Comandos: interfaz estado | interfaz diagnostico [Nombre_Apellido] | interfaz canales [Nombre_Apellido] | vincular | vpn estado | estado | cuentas | cuenta Nombre_Apellido | conectar [Nombre_Apellido] | desconectar [Nombre_Apellido|todas] | recargar | dialogo | conexion diagnostico [Nombre_Apellido] | salir');};
+  const help=()=>{console.log('Comandos: interfaz estado | interfaz diagnostico [Nombre_Apellido] | interfaz canales [Nombre_Apellido] | interfaz negociar Nombre_Apellido | vincular | vpn estado | estado | cuentas | cuenta Nombre_Apellido | conectar [Nombre_Apellido] | desconectar [Nombre_Apellido|todas] | recargar | dialogo | conexion diagnostico [Nombre_Apellido] | salir');};
   const input=readline.createInterface({input:process.stdin,terminal:false});
   input.on('line',line=>{
     if(line.length>256)return;
@@ -439,7 +443,7 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
       if(command==='salir'){await shutdown();return;}
       if(command==='ayuda'){help();return;}
       if(command==='interfaz estado'){
-        console.log(JSON.stringify({version:'0.6.7',paso:1,lecturaInterfaz:nativeUiDiagnostics,inventarioPaquetes:true,modo:diagnosticOnly?'solo-lectura':'normal',arranqueAutomatico:!diagnosticOnly,loginAutomatico:!diagnosticOnly,afkAutomatico:!diagnosticOnly,cuentasActivas:manager?.clients.size??0,valoresEntradaRegistrados:false,accionesInterfazImplementadas:false},null,2));return;
+        console.log(JSON.stringify({version:'0.6.8',paso:2,lecturaInterfaz:nativeUiDiagnostics,inventarioPaquetes:true,negociacionInterfazManual:true,modo:diagnosticOnly?'diagnostico-manual':'normal',arranqueAutomatico:!diagnosticOnly,loginAutomatico:!diagnosticOnly,afkAutomatico:!diagnosticOnly,cuentasActivas:manager?.clients.size??0,valoresEntradaRegistrados:false,accionesInterfazImplementadas:false},null,2));return;
       }
       if(command==='vpn estado'){console.log(JSON.stringify(vpn.info(),null,2));return;}
       if(command==='vincular'){
@@ -457,10 +461,18 @@ async function main({vehicleDiagnostics=false,afkOnly=true,nativeUiDiagnostics=t
       }
       else if(command==='interfaz canales'||/^interfaz canales [A-Za-z0-9_\[\]().$=@]{3,24}$/.test(command)){
         const nickname=parts[2]||manager.selected,info=manager.connectionInfo(nickname),data=info.datos,ui=info.interfazNativa;
-        console.log(JSON.stringify({version:'0.6.7',cuenta:nickname,disponible:data?.packetInventoryAvailable===true,
+        console.log(JSON.stringify({version:'0.6.8',cuenta:nickname,disponible:data?.packetInventoryAvailable===true,
           estado:info.estadoActual,paquetes:data?.packetTypes??[],rpcsSinManejar:data?.unhandledRpcs??[],
           interfazF4:ui?{operaciones:ui.operacionesRecibidas,controles:ui.totalControles,lecturaCompleta:ui.lecturaCompleta}:null,
-          accionesEnviadas:0,aviso:'Metadatos de recepcion; no incluyen cuerpos de paquetes ni confirman acceso a la cuenta.'},null,2));
+          pantallaSamp:info.acceso?.estadoActual??null,ultimoDialogo:info.acceso?.ultimoDialogoRecibido??null,
+          dialogosRecibidos:info.acceso?.dialogosRecibidos??[],
+          mensajesServidor:info.acceso?.mensajesServidor??[],
+          negociacion:ui?.negociacion??null,accionesEnviadas:ui?.accionesEnviadas??0,accionesControlesEnviadas:0,aviso:'Metadatos de recepcion; no incluyen cuerpos de paquetes ni confirman acceso a la cuenta.'},null,2));
+      }
+      else if(/^interfaz negociar [A-Za-z0-9_\[\]().$=@]{3,24}$/.test(command)){
+        const target=manager.target(parts[2]);
+        if(!target||!await target.negotiateUiInventory())console.log('No se envio el inventario: la cuenta debe estar conectada sin un dialogo SA-MP abierto, haber recibido la solicitud F4 y no haber respondido ya en este intento.');
+        else console.log('['+target.profile.nickname+'] Inventario vacio de interfaces puesto en cola. Espera nuevos mensajes y consulta interfaz canales. Login y AFK siguen desactivados.');
       }
       else if(parts[0].toLowerCase()==='cuenta'&&parts.length===2){manager.select(parts[1]);console.log('Cuenta seleccionada: '+manager.selected);}
       else if(command==='dialogo')console.log(JSON.stringify(client?.dialogInfo()||{aviso:'No hay un dialogo disponible para consultar.'},null,2));

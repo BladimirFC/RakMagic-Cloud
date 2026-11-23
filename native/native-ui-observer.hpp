@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "ui-inventory-probe.hpp"
 
 namespace {
 struct NativeUiObserverState {
@@ -7,14 +8,16 @@ struct NativeUiObserverState {
     unsigned windowFrames=0;
     std::chrono::steady_clock::time_point window=std::chrono::steady_clock::now();
 } nativeUiObserver;
+UiInventoryProbe nativeUiInventory;
 bool nativeUiObserverEnabled(){
     static const bool enabled=[](){const char* v=std::getenv("RAKMAGIC_NATIVE_UI_DIAGNOSTIC");return v&&std::string(v)=="1";}();
     return enabled;
 }
 }
-void cloudNativeUiReset(){nativeUiObserver=NativeUiObserverState{};}
+void cloudNativeUiReset(){nativeUiObserver=NativeUiObserverState{};nativeUiInventory.reset();}
 void cloudNativeUiObserve(const unsigned char* data,std::size_t length){
     if(!nativeUiObserverEnabled()||!data||!length||data[0]!=248)return;
+    nativeUiInventory.observe(data,length);
     auto& s=nativeUiObserver;++s.observed;
     const auto now=std::chrono::steady_clock::now();
     if(now-s.window>=std::chrono::seconds(1)){s.window=now;s.windowBytes=0;s.windowFrames=0;}
